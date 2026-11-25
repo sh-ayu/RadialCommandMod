@@ -1,0 +1,190 @@
+{
+  "version": 1,
+  "enabled": true,
+  "language": "auto",
+  "activationMode": "hold",
+  "activationKey": "Alt",
+  "editorKey": "F12",
+  "flickSensitivity": 1.00,
+  "outerRadius": 92.00,
+  "innerRadius": 32.00,
+  "deadzoneRadius": 22.00,
+  "backgroundOpacity": 0.78,
+  "fontScale": 0.95,
+  "holdDelayMs": 0,
+  "submenuHoverMs": 320,
+  "globalCooldownMs": 350,
+  "executeOnRelease": true,
+  "executeOnLeftClick": true,
+  "autoSwitchPreset": true,
+  "showPresetToast": true,
+  "showNumberHints": true,
+  "invertWheelScroll": false,
+  "verboseLog": false,
+  "defaultPresetId": "default",
+  "presets": [
+    {
+      "id": "default",
+      "name": "Default",
+      "serverRules": [],
+      "slots": [
+        {
+          "label": "Hub",
+          "subtitle": "/hub",
+          "type": "command",
+          "value": "/hub",
+          "color": "#38BDF8"
+        },
+        {
+          "label": "Quick Chat",
+          "subtitle": "Submenu",
+          "type": "submenu",
+          "color": "#58A6FF",
+          "children": [
+            { "label": "GG", "subtitle": "Chat", "type": "chat", "value": "gg", "color": "#3FB950" },
+            { "label": "GLHF", "subtitle": "Chat", "type": "chat", "value": "glhf!", "color": "#3FB950" },
+            { "label": "Yoroshiku", "subtitle": "Chat", "type": "chat", "value": "よろしく！", "color": "#58A6FF" },
+            { "label": "Thanks", "subtitle": "Chat", "type": "chat", "value": "ありがとう！", "color": "#58A6FF" },
+            { "label": "Nice!", "subtitle": "Chat", "type": "chat", "value": "ナイス！", "color": "#F0B429" },
+            { "label": "Coords", "subtitle": "Share XYZ", "type": "chat", "value": "XYZ: {x} {y} {z}", "color": "#A78BFA" }
+          ]
+        },
+        { "label": "Spawn", "subtitle": "/spawn", "type": "command", "value": "/spawn", "color": "#34D399" },
+        { "label": "Home", "subtitle": "/home", "type": "command", "value": "/home", "color": "#34D399" },
+        {
+          "label": "GG + Hub",
+          "subtitle": "Macro",
+          "type": "macro",
+          "color": "#D2A8FF",
+          "cooldownMs": 1500,
+          "steps": [
+            { "type": "chat", "value": "gg", "delayMs": 0 },
+            { "type": "command", "value": "/hub", "delayMs": 250 }
+          ]
+        },
+        { "label": "Lobby", "subtitle": "/lobby", "type": "command", "value": "/lobby", "color": "#38BDF8" },
+        { "label": "Status", "subtitle": "/rc status", "type": "client_command", "value": "/rc status", "color": "#94A3B8" },
+        { "label": "Editor", "subtitle": "/rc editor", "type": "client_command", "value": "/rc editor", "color": "#F59E0B" }
+      ]
+    },
+    {
+      "id": "hive",
+      "name": "The Hive",
+      "serverRules": [
+        { "hostPattern": "*.hivebedrock.network", "port": 0, "serverNamePattern": "", "worldNamePattern": "", "scope": "external", "priority": 100 },
+        { "hostPattern": "", "port": 0, "serverNamePattern": "*Hive*", "worldNamePattern": "", "scope": "external", "priority": 90 }
+      ],
+      "slots": [
+        { "label": "Hub", "subtitle": "/hub", "type": "command", "value": "/hub", "color": "#38BDF8" },
+        { "label": "Requeue", "subtitle": "/q", "type": "command", "value": "/q", "color": "#34D399" },
+        {
+          "label": "Quick Chat",
+          "subtitle": "Submenu",
+          "type": "submenu",
+          "color": "#58A6FF",
+          "children": [
+            { "label": "GG", "subtitle": "Chat", "type": "chat", "value": "gg", "color": "#3FB950" },
+            { "label": "GLHF", "subtitle": "Chat", "type": "chat", "value": "glhf!", "color": "#3FB950" },
+            { "label": "Yoroshiku", "subtitle": "Chat", "type": "chat", "value": "よろしく！", "color": "#58A6FF" },
+            { "label": "Thanks", "subtitle": "Chat", "type": "chat", "value": "ありがとう！", "color": "#58A6FF" },
+            { "label": "Nice!", "subtitle": "Chat", "type": "chat", "value": "ナイス！", "color": "#F0B429" },
+            { "label": "Coords", "subtitle": "Share XYZ", "type": "chat", "value": "XYZ: {x} {y} {z}", "color": "#A78BFA" }
+          ]
+        },
+        {
+          "label": "GG + Hub",
+          "subtitle": "Macro",
+          "type": "macro",
+          "color": "#D2A8FF",
+          "cooldownMs": 1500,
+          "steps": [
+            { "type": "chat", "value": "gg", "delayMs": 0 },
+            { "type": "command", "value": "/hub", "delayMs": 250 }
+          ]
+        },
+        {
+          "label": "Party",
+          "subtitle": "Submenu",
+          "type": "submenu",
+          "color": "#F59E0B",
+          "children": [
+            { "label": "List", "subtitle": "/p list", "type": "command", "value": "/p list", "color": "#F59E0B" },
+            { "label": "Warp", "subtitle": "/p warp", "type": "command", "value": "/p warp", "color": "#38BDF8" },
+            { "label": "Leave", "subtitle": "/p leave", "type": "command", "value": "/p leave", "color": "#F87171" },
+            { "label": "Friends", "subtitle": "/f list", "type": "command", "value": "/f list", "color": "#34D399" }
+          ]
+        },
+        { "label": "Locker", "subtitle": "/locker", "type": "command", "value": "/locker", "color": "#A78BFA" },
+        { "label": "Replay", "subtitle": "/replay", "type": "command", "value": "/replay", "color": "#60A5FA" },
+        { "label": "Editor", "subtitle": "/rc editor", "type": "client_command", "value": "/rc editor", "color": "#F59E0B" }
+      ]
+    },
+    {
+      "id": "cubecraft",
+      "name": "CubeCraft",
+      "serverRules": [
+        { "hostPattern": "*.cubecraft.net", "port": 0, "serverNamePattern": "", "worldNamePattern": "", "scope": "external", "priority": 100 },
+        { "hostPattern": "", "port": 0, "serverNamePattern": "*CubeCraft*", "worldNamePattern": "", "scope": "external", "priority": 90 }
+      ],
+      "slots": [
+        { "label": "Hub", "subtitle": "/hub", "type": "command", "value": "/hub", "color": "#38BDF8" },
+        { "label": "Leave", "subtitle": "/leave", "type": "command", "value": "/leave", "color": "#F87171" },
+        {
+          "label": "Quick Chat",
+          "subtitle": "Submenu",
+          "type": "submenu",
+          "color": "#58A6FF",
+          "children": [
+            { "label": "GG", "subtitle": "Chat", "type": "chat", "value": "gg", "color": "#3FB950" },
+            { "label": "GLHF", "subtitle": "Chat", "type": "chat", "value": "glhf!", "color": "#3FB950" },
+            { "label": "Yoroshiku", "subtitle": "Chat", "type": "chat", "value": "よろしく！", "color": "#58A6FF" },
+            { "label": "Thanks", "subtitle": "Chat", "type": "chat", "value": "ありがとう！", "color": "#58A6FF" },
+            { "label": "Nice!", "subtitle": "Chat", "type": "chat", "value": "ナイス！", "color": "#F0B429" },
+            { "label": "Coords", "subtitle": "Share XYZ", "type": "chat", "value": "XYZ: {x} {y} {z}", "color": "#A78BFA" }
+          ]
+        },
+        {
+          "label": "GG + Hub",
+          "subtitle": "Macro",
+          "type": "macro",
+          "color": "#D2A8FF",
+          "cooldownMs": 1500,
+          "steps": [
+            { "type": "chat", "value": "gg", "delayMs": 0 },
+            { "type": "command", "value": "/hub", "delayMs": 250 }
+          ]
+        },
+        { "label": "Party", "subtitle": "/party", "type": "command", "value": "/party", "color": "#F59E0B" },
+        { "label": "Editor", "subtitle": "/rc editor", "type": "client_command", "value": "/rc editor", "color": "#94A3B8" }
+      ]
+    },
+    {
+      "id": "local",
+      "name": "Local World",
+      "serverRules": [
+        { "hostPattern": "", "port": 0, "serverNamePattern": "", "worldNamePattern": "", "scope": "local", "priority": 10 }
+      ],
+      "slots": [
+        { "label": "Creative", "subtitle": "/gamemode c", "type": "command", "value": "/gamemode c", "color": "#38BDF8" },
+        { "label": "Survival", "subtitle": "/gamemode s", "type": "command", "value": "/gamemode s", "color": "#34D399" },
+        { "label": "Spectator", "subtitle": "/gamemode spectator", "type": "command", "value": "/gamemode spectator", "color": "#A78BFA" },
+        {
+          "label": "Time / Weather",
+          "subtitle": "Submenu",
+          "type": "submenu",
+          "color": "#F59E0B",
+          "children": [
+            { "label": "Day", "subtitle": "/time set day", "type": "command", "value": "/time set day", "color": "#FBBF24" },
+            { "label": "Noon", "subtitle": "/time set noon", "type": "command", "value": "/time set noon", "color": "#F59E0B" },
+            { "label": "Night", "subtitle": "/time set night", "type": "command", "value": "/time set night", "color": "#6366F1" },
+            { "label": "Clear", "subtitle": "/weather clear", "type": "command", "value": "/weather clear", "color": "#38BDF8" }
+          ]
+        },
+        { "label": "Night Vision", "subtitle": "Effect", "type": "command", "value": "/effect @s night_vision 600 0 true", "color": "#60A5FA" },
+        { "label": "KeepInv On", "subtitle": "gamerule", "type": "command", "value": "/gamerule keepinventory true", "color": "#34D399" },
+        { "label": "Share XYZ", "subtitle": "Chat", "type": "chat", "value": "XYZ: {x} {y} {z}", "color": "#58A6FF" },
+        { "label": "Editor", "subtitle": "/rc editor", "type": "client_command", "value": "/rc editor", "color": "#F59E0B" }
+      ]
+    }
+  ]
+}

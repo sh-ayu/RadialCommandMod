@@ -1,0 +1,13 @@
+.xmake/
+build/
+bin/
+dist/
+.vs/
+vsxmake*/
+*.log
+*.tmp
+*.pdb
+*.ilk
+*.exp
+*.lib
+*.user
