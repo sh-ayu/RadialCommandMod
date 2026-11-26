@@ -41,7 +41,7 @@ A **LeviLamina client native mod** for Minecraft Bedrock (Windows x64) that adds
 lip install github.com/sh-ayu/RadialCommandMod
 ```
 
-Your `mods/RadialCommandMod/config/config.json` is automatically preserved across upgrades.
+Both `lip.toml` (for LeviMC Mods / LeviLauncher) and `tooth.json` are included, and your `mods/RadialCommandMod/config/` directory is automatically preserved across upgrades.
 
 ### 2. Manual Release ZIP
 

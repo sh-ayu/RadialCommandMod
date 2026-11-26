@@ -1,0 +1,22 @@
+format = 4
+id = "github.com/sh-ayu/RadialCommandMod"
+version = "1.0.1"
+
+[info]
+name = "RadialCommandMod"
+description = "Hold/toggle radial command & quick-chat wheel with flick selection, submenus, timed macros, per-server auto presets, and an in-game visual GUI editor for Minecraft Bedrock."
+tags = ["utility", "visual"]
+logo = "https://avatars.githubusercontent.com/u/174009190"
+
+[[variants.""]]
+side = "client"
+platform = "win-x64"
+preserve = ["mods/RadialCommandMod/config/"]
+
+[variants."".deps]
+"github.com/LiteLDev/LeviLamina#client" = "26.60.*"
+
+[[variants."".assets]]
+type = "zip"
+urls = ["https://{{id}}/releases/download/v{{version}}/RadialCommandMod-client-windows-x64.zip"]
+place = [{ src = "RadialCommandMod/", dest = "mods/RadialCommandMod/" }]

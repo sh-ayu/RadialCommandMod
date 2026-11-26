@@ -98,11 +98,11 @@ bool isVkPhysicallyDown(int vk) noexcept {
 }
 
 bool isAltChordActive() noexcept {
+    // Allow Shift+Alt so players can open the radial wheel while sneaking.
     return ((GetAsyncKeyState(VK_TAB) & 0x8000) != 0)
         || ((GetAsyncKeyState(VK_RETURN) & 0x8000) != 0)
         || ((GetAsyncKeyState(VK_SPACE) & 0x8000) != 0)
         || ((GetAsyncKeyState(VK_F4) & 0x8000) != 0)
-        || ((GetAsyncKeyState(VK_SHIFT) & 0x8000) != 0)
         || ((GetAsyncKeyState(VK_ESCAPE) & 0x8000) != 0);
 }
 
@@ -755,7 +755,7 @@ void RadialMod::onAfterUiRender(ll::event::render::AfterUIRenderEvent& ev) noexc
                     mSuppressWheelUntilRelease.store(false, std::memory_order_relaxed);
                 }
 
-                if (altChord) {
+                if (physDown && altChord) {
                     if (mController.isPressTracked()) mController.cancelWheel();
                     mSuppressWheelUntilRelease.store(true, std::memory_order_relaxed);
                 } else if (mSuppressWheelUntilRelease.load(std::memory_order_relaxed)) {
@@ -837,6 +837,11 @@ void RadialMod::onKeyInput(ll::event::input::KeyInputEvent& ev) noexcept {
         if (!isMouseButtonVk(actKey) && keyMatchesBinding(vk, actKey)) {
             if (down) {
                 if (!enabled || !hudOk) return;
+                bool const isAltBind = (actKey == kVkMenu || actKey == kVkLMenu || actKey == kVkRMenu);
+                if (isAltBind && isAltChordActive()) {
+                    mSuppressWheelUntilRelease.store(true, std::memory_order_relaxed);
+                    return;
+                }
                 if (mSuppressWheelUntilRelease.load(std::memory_order_relaxed)) return;
                 mActKeyPolledDown.store(true, std::memory_order_relaxed);
                 std::lock_guard lock(mMutex);

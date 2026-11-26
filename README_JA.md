@@ -43,7 +43,7 @@ Minecraft Bedrock（統合版 / Windows x64）向けの **LeviLamina クライ�
 lip install github.com/sh-ayu/RadialCommandMod
 ```
 
-アップデート時も `mods/RadialCommandMod/config/config.json` は自動保護されます。
+`lip.toml`（LeviMC Mods / LeviLauncher 対応）と `tooth.json` の両方を同梱しており、アップデート時も `mods/RadialCommandMod/config/` は自動保護されます。
 
 ### 2. GitHub Releases の ZIP を手動配置する場合
 

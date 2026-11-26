@@ -2,6 +2,16 @@
 
 All notable changes to **RadialCommandMod** are documented in this file.
 
+## [1.0.1] - 2026-11-26
+
+### Fixed
+- **Allow `Shift+Alt` while sneaking**: Removed `Shift` from the Windows Alt-chord suppression list so players can open the radial wheel while holding sneak (`Shift`).
+- **Tightened Alt-chord suppression**: Only suppress the wheel on Alt system chords (`Alt+Tab`, `Alt+Enter`, `Alt+Space`, `Alt+F4`, `Alt+Esc`) while the activation key is physically held, and guard early in `onKeyInput` as well.
+
+### Packaging & Metadata
+- Added `lip.toml` (format 4) with official LeviMC Mods category tags (`utility`, `visual`), logo, and config directory preservation (`mods/RadialCommandMod/config/`).
+- Updated `scripts/package.ps1` to validate `lip.toml` version parity alongside `manifest.json`, `tooth.json`, and `xmake.lua`.
+
 ## [1.0.0] - 2026-11-26
 
 ### Target & Verification

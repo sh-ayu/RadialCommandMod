@@ -7,18 +7,30 @@ $ErrorActionPreference = "Stop"
 $repoRoot     = Split-Path -Parent $PSScriptRoot
 $binDir       = Join-Path $repoRoot "bin\RadialCommandMod"
 $manifestPath = Join-Path $repoRoot "manifest.json"
+$lipPath      = Join-Path $repoRoot "lip.toml"
 $toothPath    = Join-Path $repoRoot "tooth.json"
 $xmakePath    = Join-Path $repoRoot "xmake.lua"
 
+if (!(Test-Path $lipPath)) {
+    throw "Missing required lip manifest: $lipPath"
+}
 if (!(Test-Path $toothPath)) {
     throw "Missing required lip manifest: $toothPath"
 }
 
 $manifest = Get-Content $manifestPath -Raw | ConvertFrom-Json
+$lipRaw   = Get-Content $lipPath -Raw
 $tooth    = Get-Content $toothPath -Raw | ConvertFrom-Json
 $xmakeRaw = Get-Content $xmakePath -Raw
 $version  = $manifest.version
 
+if ($lipRaw -match '(?m)^version\s*=\s*"([^"]+)"') {
+    if ($Matches[1] -ne $version) {
+        throw "Version mismatch: manifest.json ($version) != lip.toml ($($Matches[1]))"
+    }
+} else {
+    throw "Missing version in lip.toml: $lipPath"
+}
 if ($tooth.version -ne $version) {
     throw "Version mismatch: manifest.json ($version) != tooth.json ($($tooth.version))"
 }
@@ -31,6 +43,7 @@ if ($xmakeRaw -match 'modVersion\s*=\s*"([^"]+)"') {
 $requiredFiles = @(
     (Join-Path $binDir "RadialCommandMod.dll"),
     (Join-Path $repoRoot "manifest.json"),
+    (Join-Path $repoRoot "lip.toml"),
     (Join-Path $repoRoot "tooth.json"),
     (Join-Path $repoRoot "config.sample.json"),
     (Join-Path $repoRoot "CHANGELOG.md"),
