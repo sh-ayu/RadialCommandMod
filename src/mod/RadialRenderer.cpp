@@ -327,10 +327,21 @@ bool WheelMeshBatch::flush(MinecraftUIRenderContext& ctx, float originX, float o
         auto const& mat  = mats[static_cast<int>(ScreenRenderer::ScreenMaterial::FillGradient)];
         if (!static_cast<bool>(mat.mRenderMaterialInfoPtr.get())) return false;
 
-        ShaderColor& shaderCol  = screenCtx.currentShaderColor;
-        mce::Color   savedColor = shaderCol.color;
-        shaderCol.color         = mce::Color(1.0f, 1.0f, 1.0f, 1.0f);
-        shaderCol.dirty         = true;
+        struct ShaderColorGuard {
+            ShaderColor& target;
+            mce::Color   saved;
+            explicit ShaderColorGuard(ShaderColor& sc) noexcept : target(sc), saved(sc.color) {
+                target.color = mce::Color(1.0f, 1.0f, 1.0f, 1.0f);
+                target.dirty = true;
+            }
+            ~ShaderColorGuard() noexcept {
+                target.color = saved;
+                target.dirty = true;
+            }
+            ShaderColorGuard(ShaderColorGuard const&)            = delete;
+            ShaderColorGuard& operator=(ShaderColorGuard const&) = delete;
+        };
+        ShaderColorGuard shaderGuard(screenCtx.currentShaderColor);
 
         tess.begin(
             Tessellator::DebugContextCallback{},
@@ -345,9 +356,6 @@ bool WheelMeshBatch::flush(MinecraftUIRenderContext& ctx, float originX, float o
 
         OffscreenCaptureDescription capture{};
         MeshHelpers::renderMeshImmediately(screenCtx, tess, mat, capture);
-
-        shaderCol.color = savedColor;
-        shaderCol.dirty = true;
         return true;
     } catch (...) {
         return false;

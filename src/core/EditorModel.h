@@ -149,6 +149,8 @@ struct EditorLayout {
     bool                       presetMatchesCurrent     = false;
     int                        selectedRuleIndex        = 0;
     int                        totalRules               = 0;
+    int                        maxTogglePage            = 0;
+    int                        maxSliderPage            = 0;
 };
 
 enum class EditorCommand {

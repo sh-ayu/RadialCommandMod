@@ -732,14 +732,19 @@ std::optional<int> parseKeyName(std::string_view name) noexcept {
         if (c >= '0' && c <= '9') return static_cast<int>(c);
         if (c == '`' || c == '~') return kVkOem3;
     }
-    if (lo.size() >= 2 && lo[0] == 'f') {
-        bool allDigits = true;
-        for (size_t i = 1; i < lo.size(); ++i) {
-            if (!std::isdigit(static_cast<unsigned char>(lo[i]))) allDigits = false;
+    auto parseStrictInt = [](std::string_view sv) noexcept -> std::optional<int> {
+        if (sv.empty()) return std::nullopt;
+        for (char c : sv) {
+            if (!std::isdigit(static_cast<unsigned char>(c))) return std::nullopt;
         }
-        if (allDigits) {
-            int n = std::atoi(lo.c_str() + 1);
-            if (n >= 1 && n <= 12) return kVkF1 + (n - 1);
+        int  val = 0;
+        auto res = std::from_chars(sv.data(), sv.data() + sv.size(), val);
+        if (res.ec != std::errc{} || res.ptr != sv.data() + sv.size()) return std::nullopt;
+        return val;
+    };
+    if (lo.size() >= 2 && lo[0] == 'f') {
+        if (auto n = parseStrictInt(std::string_view(lo).substr(1)); n && *n >= 1 && *n <= 12) {
+            return kVkF1 + (*n - 1);
         }
     }
     if (lo == "alt" || lo == "menu") return kVkMenu;
@@ -762,16 +767,13 @@ std::optional<int> parseKeyName(std::string_view name) noexcept {
     if (lo == "mouse4" || lo == "xbutton1" || lo == "mb4" || lo == "side1") return kVkXButton1;
     if (lo == "mouse5" || lo == "xbutton2" || lo == "mb5" || lo == "side2") return kVkXButton2;
     if (lo.starts_with("vk_")) {
-        int code = std::atoi(lo.c_str() + 3);
-        if (code > 0 && code < 255) return code;
+        if (auto code = parseStrictInt(std::string_view(lo).substr(3)); code && *code > 0 && *code < 255) {
+            return *code;
+        }
+        return std::nullopt;
     }
-    bool allDigits = true;
-    for (char c : lo) {
-        if (!std::isdigit(static_cast<unsigned char>(c))) allDigits = false;
-    }
-    if (allDigits) {
-        int code = std::atoi(lo.c_str());
-        if (code >= 0 && code < 255) return code;
+    if (auto code = parseStrictInt(lo); code && *code >= 0 && *code < 255) {
+        return *code;
     }
     return std::nullopt;
 }

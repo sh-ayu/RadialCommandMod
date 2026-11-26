@@ -2,9 +2,10 @@
 
 #include <algorithm>
 #include <cctype>
+#include <charconv>
 #include <cmath>
 #include <cstdio>
-#include <cstdlib>
+#include <optional>
 
 namespace radial::editor {
 namespace {
@@ -69,6 +70,14 @@ std::string fmtFloat(float v, int decimals = 2) {
     else if (decimals == 1) std::snprintf(buf, sizeof(buf), "%.1f", v);
     else std::snprintf(buf, sizeof(buf), "%.2f", v);
     return buf;
+}
+
+std::optional<int> parseStrictInt(std::string_view sv) noexcept {
+    if (sv.empty()) return std::nullopt;
+    int  val = 0;
+    auto res = std::from_chars(sv.data(), sv.data() + sv.size(), val);
+    if (res.ec != std::errc{} || res.ptr != sv.data() + sv.size()) return std::nullopt;
+    return val;
 }
 
 } // namespace
@@ -852,6 +861,7 @@ EditorLayout EditorModel::buildLayout(float screenW, float screenH) const {
         float botY   = L.leftPane.y1 - 16.5f;
         int   perPg  = std::max(2, std::min(4, static_cast<int>((botY - ly - 2.0f) / 14.5f)));
         int   maxTPg = (static_cast<int>(std::size(allTogs)) - 1) / perPg;
+        L.maxTogglePage = maxTPg;
         int   tPg    = std::clamp(mSettingsTogPage, 0, maxTPg);
         int   tBegin = tPg * perPg;
         int   tEnd   = std::min<int>(static_cast<int>(std::size(allTogs)), tBegin + perPg);
@@ -891,6 +901,7 @@ EditorLayout EditorModel::buildLayout(float screenW, float screenH) const {
         float rBotY   = L.rightPane.y1 - 16.5f;
         int   slPerPg = std::max(3, std::min(5, static_cast<int>((rBotY - ry - 2.0f) / 24.0f)));
         int   maxSPg  = (static_cast<int>(allSliders.size()) - 1) / slPerPg;
+        L.maxSliderPage = maxSPg;
         int   sPg     = std::clamp(mSettingsSlidePage, 0, maxSPg);
         int   sBegin  = sPg * slPerPg;
         int   sEnd    = std::min<int>(static_cast<int>(allSliders.size()), sBegin + slPerPg);
@@ -1223,11 +1234,18 @@ EditorCommand EditorModel::handleClick(
             return EditorCommand::None;
         }
         if (b.id == "tog_page") {
-            mSettingsTogPage = (mSettingsTogPage + 1) % 3;
+            int const pageCount = std::max(1, L.maxTogglePage + 1);
+            mSettingsTogPage    = (std::clamp(mSettingsTogPage, 0, pageCount - 1) + 1) % pageCount;
             return EditorCommand::None;
         }
-        if (b.id == "sl_prev") { mSettingsSlidePage = std::max(0, mSettingsSlidePage - 1); return EditorCommand::None; }
-        if (b.id == "sl_next") { ++mSettingsSlidePage; return EditorCommand::None; }
+        if (b.id == "sl_prev") {
+            mSettingsSlidePage = std::clamp(mSettingsSlidePage - 1, 0, std::max(0, L.maxSliderPage));
+            return EditorCommand::None;
+        }
+        if (b.id == "sl_next") {
+            mSettingsSlidePage = std::clamp(mSettingsSlidePage + 1, 0, std::max(0, L.maxSliderPage));
+            return EditorCommand::None;
+        }
         if (b.id == "reset_defaults") {
             if (!mConfirmReset) {
                 mConfirmReset = true;
@@ -1248,11 +1266,13 @@ EditorCommand EditorModel::handleClick(
         }
 
         if (b.id.starts_with("preset:")) {
-            mSelectedPreset = std::atoi(b.id.c_str() + 7);
-            mSelectedRule   = 0;
-            mSubmenuPath.clear();
-            mSelectedSlot = 0;
-            ensureValidSelection();
+            if (auto parsed = parseStrictInt(std::string_view(b.id).substr(7))) {
+                mSelectedPreset = *parsed;
+                mSelectedRule   = 0;
+                mSubmenuPath.clear();
+                mSelectedSlot = 0;
+                ensureValidSelection();
+            }
             return EditorCommand::None;
         }
         if (b.id == "preset_prev" || b.id == "preset_next") {
@@ -1388,7 +1408,7 @@ EditorCommand EditorModel::handleClick(
                 ensureSelectedRule(*p);
                 auto& r            = p->serverRules[static_cast<size_t>(mSelectedRule)];
                 r.worldNamePattern = "*" + mServer.worldName + "*";
-                r.scope            = ConnectionScope::Local;
+                r.scope            = mServer.isLocal ? ConnectionScope::Local : ConnectionScope::External;
                 mDirty             = true;
             }
             return EditorCommand::None;
@@ -1531,8 +1551,10 @@ EditorCommand EditorModel::handleClick(
 
         // Macro step controls
         if (b.id.starts_with("mstep:")) {
-            mSelectedMacroStep = std::atoi(b.id.c_str() + 6);
-            ensureValidSelection();
+            if (auto parsed = parseStrictInt(std::string_view(b.id).substr(6))) {
+                mSelectedMacroStep = *parsed;
+                ensureValidSelection();
+            }
             return EditorCommand::None;
         }
         if (b.id == "mstep_prev_page") { mMacroPage = std::max(0, mMacroPage - 1); return EditorCommand::None; }
@@ -1780,6 +1802,10 @@ bool EditorModel::insertText(std::string_view utf8) {
     mCursorByte = std::min(mCursorByte, cur.size());
 
     size_t maxBytes = (mFocusedField == TextFieldId::SlotValue || mFocusedField == TextFieldId::MacroStepValue) ? 256
+                    : (mFocusedField == TextFieldId::HostPattern
+                       || mFocusedField == TextFieldId::ServerNamePattern
+                       || mFocusedField == TextFieldId::WorldNamePattern) ? 128
+                    : (mFocusedField == TextFieldId::SlotSubtitle) ? 64
                     : (mFocusedField == TextFieldId::RulePort) ? 5
                                                                : 48;
     if (cur.size() >= maxBytes) return false;
@@ -1881,7 +1907,12 @@ void EditorModel::setFieldValue(TextFieldId id, std::string const& val) {
     if (id == TextFieldId::RulePort) {
         if (auto* p = currentPreset()) {
             ensureSelectedRule(*p);
-            int port = val.empty() ? 0 : std::clamp(std::atoi(val.c_str()), 0, 65535);
+            int port = 0;
+            if (!val.empty()) {
+                if (auto parsed = parseStrictInt(val)) {
+                    port = std::clamp(*parsed, 0, 65535);
+                }
+            }
             p->serverRules[static_cast<size_t>(mSelectedRule)].port = port;
         }
     }

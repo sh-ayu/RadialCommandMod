@@ -5,6 +5,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <charconv>
 #include <chrono>
 #include <cmath>
 #include <sstream>
@@ -188,13 +189,14 @@ bool RadialMod::load() {
     if (!mSelf) return false;
 
     mSystemIsJapanese = detectSystemJapanese();
-    mShutdown.store(false, std::memory_order_release);
-    mConfigPath = mSelf->getConfigDir() / "config.json";
+    mConfigPath       = mSelf->getConfigDir() / "config.json";
 
     auto loaded = loadConfigFile(mConfigPath);
     {
         std::lock_guard lock(mMutex);
-        mConfig = loaded.config;
+        mActKeyDown                = false;
+        mSuppressWheelUntilRelease = false;
+        mConfig                    = loaded.config;
         mVerboseLog.store(mConfig.verboseLog, std::memory_order_relaxed);
         mController.setConfig(mConfig, steadyNowMs());
     }
@@ -229,12 +231,15 @@ bool RadialMod::enable() {
     if (!mSelf) return false;
     mInHud.store(false, std::memory_order_release);
     mEditorKeyHeld.store(false, std::memory_order_release);
-    mActKeyPolledDown.store(false, std::memory_order_release);
-    mSuppressWheelUntilRelease.store(false, std::memory_order_release);
     mWasForeground.store(true, std::memory_order_release);
     mLastServerProbeMs.store(0, std::memory_order_release);
     mJoinReprobeUntilMs.store(0, std::memory_order_release);
     mPendingMoveReset.store(false, std::memory_order_release);
+    {
+        std::lock_guard lock(mMutex);
+        mActKeyDown                = false;
+        mSuppressWheelUntilRelease = false;
+    }
 
     mEditor.setCallbacks(
         [this](RadialConfig const& updated, std::string& msgOut) -> bool {
@@ -350,6 +355,8 @@ bool RadialMod::disable() {
     // 4) Clear controller state under mutex.
     {
         std::lock_guard lock(mMutex);
+        mActKeyDown                = false;
+        mSuppressWheelUntilRelease = false;
         mController.cancelWheel();
         mController.clearPendingActions();
     }
@@ -378,11 +385,16 @@ ServerIdentity RadialMod::probeServerIdentity(ClientInstance& client) noexcept {
         }
 
         if (auto connOpt = client.getGameConnectionInfo(); connOpt.has_value()) {
-            auto const& conn = *connOpt;
-            id.host          = conn.mUnresolvedUrl.get();
-            id.ip            = conn.mHostIpAddress.get();
-            id.port          = conn.mPort;
-            id.serverName    = conn.mExternalServerName.get();
+            auto const& conn     = *connOpt;
+            auto const  normHost = normalizeHostEndpoint(conn.mUnresolvedUrl.get());
+            auto const  normIp   = normalizeHostEndpoint(conn.mHostIpAddress.get());
+            id.host              = normHost.host;
+            id.ip                = normIp.host;
+            id.port              = conn.mPort;
+            if (id.port <= 0) {
+                id.port = (normHost.port > 0) ? normHost.port : normIp.port;
+            }
+            id.serverName = conn.mExternalServerName.get();
 
             bool typeLocal    = (conn.mType == Social::ConnectionType::Local);
             bool loopbackOnly = (id.host.empty() || isLoopbackHost(id.host))
@@ -556,11 +568,23 @@ bool RadialMod::executeBuiltinRcCommand(std::string_view rawCmd, ClientInstance&
             setLanguageByName(arg, msg);
             showLocalChatFeedback(client, msg);
         } else if (sub == "sensitivity" && !arg.empty()) {
-            float v = setSensitivity(std::strtof(arg.c_str(), nullptr));
-            showLocalChatFeedback(client, "RadialCommandMod: flickSensitivity = " + std::to_string(v));
+            float parsed = 0.0f;
+            auto  res    = std::from_chars(arg.data(), arg.data() + arg.size(), parsed);
+            if (res.ec == std::errc{} && res.ptr == arg.data() + arg.size() && std::isfinite(parsed)) {
+                float v = setSensitivity(parsed);
+                showLocalChatFeedback(client, "RadialCommandMod: flickSensitivity = " + std::to_string(v));
+            } else {
+                showLocalChatFeedback(client, "RadialCommandMod: invalid sensitivity value '" + arg + "'");
+            }
         } else if (sub == "cooldown" && !arg.empty()) {
-            int v = setGlobalCooldown(std::atoi(arg.c_str()));
-            showLocalChatFeedback(client, "RadialCommandMod: globalCooldownMs = " + std::to_string(v) + "ms");
+            int  parsed = 0;
+            auto res    = std::from_chars(arg.data(), arg.data() + arg.size(), parsed);
+            if (res.ec == std::errc{} && res.ptr == arg.data() + arg.size()) {
+                int v = setGlobalCooldown(parsed);
+                showLocalChatFeedback(client, "RadialCommandMod: globalCooldownMs = " + std::to_string(v) + "ms");
+            } else {
+                showLocalChatFeedback(client, "RadialCommandMod: invalid cooldown value '" + arg + "'");
+            }
         } else {
             showLocalChatFeedback(client, describeHelp());
         }
@@ -684,8 +708,10 @@ void RadialMod::onAfterUiRender(ll::event::render::AfterUIRenderEvent& ev) noexc
             return;
         }
 
-        int64_t nowMs = steadyNowMs();
-        mInHud.store(safeHud, std::memory_order_release);
+        int64_t    nowMs        = steadyNowMs();
+        bool const hideHud      = client.getOptions().getHideHud();
+        bool const effectiveHud = safeHud && !hideHud;
+        mInHud.store(effectiveHud, std::memory_order_release);
         mLastHudFrameMs.store(nowMs, std::memory_order_release);
 
         auto* player  = client.getLocalPlayer();
@@ -693,8 +719,9 @@ void RadialMod::onAfterUiRender(ll::event::render::AfterUIRenderEvent& ev) noexc
                      && !client.isLeavingGame() && !client.isExitingLevel();
         if (!inWorld) {
             mEditor.requestClose(false);
-            mActKeyPolledDown.store(false, std::memory_order_relaxed);
             std::lock_guard lock(mMutex);
+            mActKeyDown                = false;
+            mSuppressWheelUntilRelease = false;
             mController.cancelWheel();
             return;
         }
@@ -714,51 +741,66 @@ void RadialMod::onAfterUiRender(ll::event::render::AfterUIRenderEvent& ev) noexc
         // Overlay editor rendering & cursor management (stays open across Alt-Tab / other windows!).
         mEditor.onHudRender(client, ctx, ox, oy, sw, sh, inWorld, safeHud, foreground);
         if (mEditor.isOpen()) {
-            mSuppressWheelUntilRelease.store(true, std::memory_order_relaxed);
             std::lock_guard lock(mMutex);
+            mSuppressWheelUntilRelease = true;
+            mActKeyDown                = false;
             mController.cancelWheel();
             return;
         }
         // Suppress wheel on the exact frame the editor closes so held/residual keys never misfire.
         if (mEditor.consumeJustClosedFlag()) {
-            mSuppressWheelUntilRelease.store(true, std::memory_order_relaxed);
+            std::lock_guard lock(mMutex);
+            mSuppressWheelUntilRelease = true;
+            mActKeyDown                = false;
+            return;
+        }
+
+        // Block wheel activation & rendering completely while HUD is hidden (F1).
+        if (hideHud) {
+            std::lock_guard lock(mMutex);
+            mActKeyDown = false;
+            if (mController.isPressTracked()) {
+                mController.cancelWheel();
+            }
             return;
         }
 
         bool const prevFg = mWasForeground.exchange(foreground, std::memory_order_relaxed);
-        if (foreground && !prevFg) {
-            // Focus just returned (e.g. via Alt+Tab): suppress wheel until activation key is released once!
-            mSuppressWheelUntilRelease.store(true, std::memory_order_relaxed);
-        }
+        bool const focusReturned = (foreground && !prevFg);
 
         RadialViewSnapshot snap;
         RadialConfig       cfgCopy;
         ResolvedLang       lang = ResolvedLang::En;
         {
             std::lock_guard lock(mMutex);
+            if (focusReturned) {
+                // Focus just returned (e.g. via Alt+Tab): suppress wheel until activation key is released once!
+                mSuppressWheelUntilRelease = true;
+            }
             cfgCopy = mConfig;
             lang    = currentLangLocked();
-            if (!safeHud || !foreground || !mConfig.enabled) {
-                mActKeyPolledDown.store(false, std::memory_order_relaxed);
+            if (!effectiveHud || !foreground || !mConfig.enabled) {
+                mActKeyDown = false;
                 if (mController.isPressTracked()) {
                     mController.cancelWheel();
                 }
             } else {
-                bool const physDown = isVkPhysicallyDown(mConfig.activationKey);
+                bool const physDown  = isVkPhysicallyDown(mConfig.activationKey);
                 bool const isAltBind = (mConfig.activationKey == kVkMenu
                                         || mConfig.activationKey == kVkLMenu
                                         || mConfig.activationKey == kVkRMenu);
-                bool const altChord = isAltBind && isAltChordActive();
-                bool const wasDown  = mActKeyPolledDown.exchange(physDown, std::memory_order_relaxed);
+                bool const altChord  = isAltBind && isAltChordActive();
+                bool const wasDown   = mActKeyDown;
+                mActKeyDown          = physDown;
 
                 if (!physDown) {
-                    mSuppressWheelUntilRelease.store(false, std::memory_order_relaxed);
+                    mSuppressWheelUntilRelease = false;
                 }
 
                 if (physDown && altChord) {
                     if (mController.isPressTracked()) mController.cancelWheel();
-                    mSuppressWheelUntilRelease.store(true, std::memory_order_relaxed);
-                } else if (mSuppressWheelUntilRelease.load(std::memory_order_relaxed)) {
+                    mSuppressWheelUntilRelease = true;
+                } else if (mSuppressWheelUntilRelease) {
                     // Wait cleanly until the key is released once.
                 } else if (physDown && !wasDown) {
                     mController.onActivationDown(mConfig, nowMs, lang);
@@ -769,8 +811,6 @@ void RadialMod::onAfterUiRender(ll::event::render::AfterUIRenderEvent& ev) noexc
             }
             snap = mController.buildSnapshot(mConfig, nowMs);
         }
-
-        if (client.getOptions().getHideHud()) return;
 
         if (snap.open) {
             RadialRenderer::renderWheel(ctx, ox, oy, sw, sh, snap, cfgCopy, lang);
@@ -789,16 +829,12 @@ void RadialMod::onKeyInput(ll::event::input::KeyInputEvent& ev) noexcept {
         int  vk   = ev.keyCode();
         bool down = ev.isDown();
 
-        int  actKey    = 0;
-        int  editorKey = 0;
-        bool enabled   = false;
-        int  holdDel   = 0;
+        int actKey    = 0;
+        int editorKey = 0;
         {
             std::lock_guard lock(mMutex);
             actKey    = mConfig.activationKey;
             editorKey = mConfig.editorKey;
-            enabled   = mConfig.enabled;
-            holdDel   = mConfig.holdDelayMs;
         }
 
         // Always update editor key release BEFORE mEditor consumes events so mEditorKeyHeld never sticks!
@@ -835,28 +871,37 @@ void RadialMod::onKeyInput(ll::event::input::KeyInputEvent& ev) noexcept {
 
         // Activation hold/toggle key handling (for non-mouse keys that reach KeyInputEvent).
         if (!isMouseButtonVk(actKey) && keyMatchesBinding(vk, actKey)) {
+            std::lock_guard lock(mMutex);
+            if (!keyMatchesBinding(vk, mConfig.activationKey) || isMouseButtonVk(mConfig.activationKey)) {
+                return;
+            }
             if (down) {
-                if (!enabled || !hudOk) return;
-                bool const isAltBind = (actKey == kVkMenu || actKey == kVkLMenu || actKey == kVkRMenu);
+                if (!mConfig.enabled || !hudOk) return;
+                bool const isAltBind = (mConfig.activationKey == kVkMenu || mConfig.activationKey == kVkLMenu
+                                        || mConfig.activationKey == kVkRMenu);
                 if (isAltBind && isAltChordActive()) {
-                    mSuppressWheelUntilRelease.store(true, std::memory_order_relaxed);
+                    if (mController.isPressTracked()) mController.cancelWheel();
+                    mSuppressWheelUntilRelease = true;
+                    mActKeyDown                = true;
                     return;
                 }
-                if (mSuppressWheelUntilRelease.load(std::memory_order_relaxed)) return;
-                mActKeyPolledDown.store(true, std::memory_order_relaxed);
-                std::lock_guard lock(mMutex);
-                if (!mController.isPressTracked() || mConfig.activationMode == ActivationMode::Toggle) {
+                bool const wasDown = mActKeyDown;
+                mActKeyDown        = true;
+                if (mSuppressWheelUntilRelease) return;
+                // Only fire on a true up->down edge (prevents Toggle double-fire between UI polling and KeyInputEvent,
+                // as well as OS key-repeat events).
+                if (!wasDown) {
                     mController.onActivationDown(mConfig, nowMs, currentLangLocked());
                 }
                 // Only cancel the key when holdDelayMs == 0 or wheel is open (allows short tap passthrough when holdDelayMs > 0).
-                if (holdDel == 0 || mController.isWheelOpen()) {
+                if (mConfig.holdDelayMs == 0 || mController.isWheelOpen()) {
                     ev.cancel();
                 }
             } else {
-                mActKeyPolledDown.store(false, std::memory_order_relaxed);
-                mSuppressWheelUntilRelease.store(false, std::memory_order_relaxed);
-                std::lock_guard lock(mMutex);
-                if (mController.isPressTracked()) {
+                bool const wasDown         = mActKeyDown;
+                mActKeyDown                = false;
+                mSuppressWheelUntilRelease = false;
+                if (wasDown && mController.isPressTracked()) {
                     bool wasOpen = mController.isWheelOpen();
                     mController.onActivationUp(mConfig, nowMs, currentLangLocked());
                     if (wasOpen) ev.cancel();
@@ -909,16 +954,18 @@ void RadialMod::onMouseInput(ll::event::input::MouseInputEvent& ev) noexcept {
             if (mv != 0 && mv == mConfig.activationKey) {
                 if (data == MouseAction::DataDown) {
                     if (!mConfig.enabled || !hudOk) return;
-                    if (mSuppressWheelUntilRelease.load(std::memory_order_relaxed)) return;
-                    mActKeyPolledDown.store(true, std::memory_order_relaxed);
-                    if (!mController.isPressTracked() || mConfig.activationMode == ActivationMode::Toggle) {
+                    bool const wasDown = mActKeyDown;
+                    mActKeyDown        = true;
+                    if (mSuppressWheelUntilRelease) return;
+                    if (!wasDown) {
                         mController.onActivationDown(mConfig, nowMs, currentLangLocked());
                     }
                     if (mConfig.holdDelayMs == 0 || mController.isWheelOpen()) ev.cancel();
                 } else if (data == MouseAction::DataUp) {
-                    mActKeyPolledDown.store(false, std::memory_order_relaxed);
-                    mSuppressWheelUntilRelease.store(false, std::memory_order_relaxed);
-                    if (mController.isPressTracked()) {
+                    bool const wasDown         = mActKeyDown;
+                    mActKeyDown                = false;
+                    mSuppressWheelUntilRelease = false;
+                    if (wasDown && mController.isPressTracked()) {
                         mController.onActivationUp(mConfig, nowMs, currentLangLocked());
                     }
                 }
@@ -1083,7 +1130,9 @@ bool RadialMod::reloadConfig(std::string& messageOut) {
     }
     {
         std::lock_guard lock(mMutex);
-        mConfig = loaded.config;
+        mActKeyDown                = false;
+        mSuppressWheelUntilRelease = false;
+        mConfig                    = loaded.config;
         mVerboseLog.store(mConfig.verboseLog, std::memory_order_relaxed);
         mController.setConfig(mConfig, steadyNowMs());
     }
@@ -1096,7 +1145,9 @@ void RadialMod::resetConfig() {
     RadialConfig snap;
     {
         std::lock_guard lock(mMutex);
-        mConfig = makeDefaultConfig();
+        mActKeyDown                = false;
+        mSuppressWheelUntilRelease = false;
+        mConfig                    = makeDefaultConfig();
         mVerboseLog.store(mConfig.verboseLog, std::memory_order_relaxed);
         mController.setConfig(mConfig, steadyNowMs());
         snap = mConfig;
@@ -1135,6 +1186,7 @@ bool RadialMod::setActivationKeyByName(std::string_view keyName, std::string& me
     RadialConfig snap;
     {
         std::lock_guard lock(mMutex);
+        mActKeyDown           = false;
         mConfig.activationKey = *vk;
         snap                  = mConfig;
     }

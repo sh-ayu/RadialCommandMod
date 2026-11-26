@@ -87,13 +87,13 @@ private:
     std::atomic<int64_t> mLastServerProbeMs{0};
     std::atomic<int64_t> mJoinReprobeUntilMs{0};
     std::atomic<bool>    mEditorKeyHeld{false};
-    std::atomic<bool>    mActKeyPolledDown{false};
-    std::atomic<bool>    mSuppressWheelUntilRelease{false};
     std::atomic<bool>    mWasForeground{true};
     std::atomic<bool>    mSynthesizingKeyUp{false};
     std::atomic<bool>    mPendingMoveReset{false};
 
     std::mutex       mMutex;
+    bool             mActKeyDown                = false;
+    bool             mSuppressWheelUntilRelease = false;
     RadialConfig     mConfig;
     RadialController mController;
     RadialEditorUi   mEditor;

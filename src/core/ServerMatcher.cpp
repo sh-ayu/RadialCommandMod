@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <charconv>
 #include <sstream>
 #include <vector>
 
@@ -61,13 +62,86 @@ bool hasWildcard(std::string_view pat) noexcept {
 
 } // namespace
 
+NormalizedEndpoint normalizeHostEndpoint(std::string_view raw) {
+    NormalizedEndpoint out;
+    size_t b = 0;
+    size_t e = raw.size();
+    while (b < e && std::isspace(static_cast<unsigned char>(raw[b]))) ++b;
+    while (e > b && std::isspace(static_cast<unsigned char>(raw[e - 1]))) --e;
+    std::string_view s = raw.substr(b, e - b);
+    if (s.empty()) return out;
+
+    // Strip optional scheme prefix (e.g. "http://", "https://", "raknet://").
+    if (size_t schemeSep = s.find("://"); schemeSep != std::string_view::npos && schemeSep > 0) {
+        bool validScheme = std::isalpha(static_cast<unsigned char>(s[0])) != 0;
+        for (size_t i = 1; i < schemeSep && validScheme; ++i) {
+            unsigned char c = static_cast<unsigned char>(s[i]);
+            if (!(std::isalnum(c) || c == '+' || c == '-' || c == '.')) {
+                validScheme = false;
+            }
+        }
+        if (validScheme) {
+            s.remove_prefix(schemeSep + 3);
+        }
+    }
+
+    // Strip path / query / fragment.
+    if (size_t pathPos = s.find_first_of("/?#"); pathPos != std::string_view::npos) {
+        s = s.substr(0, pathPos);
+    }
+
+    // Strip optional userinfo ("user@host").
+    if (size_t atPos = s.rfind('@'); atPos != std::string_view::npos) {
+        s.remove_prefix(atPos + 1);
+    }
+
+    auto parsePort = [](std::string_view psv) noexcept -> int {
+        if (psv.empty() || psv.size() > 5) return 0;
+        for (char c : psv) {
+            if (!std::isdigit(static_cast<unsigned char>(c))) return 0;
+        }
+        int  val = 0;
+        auto res = std::from_chars(psv.data(), psv.data() + psv.size(), val);
+        if (res.ec != std::errc{} || res.ptr != psv.data() + psv.size()) return 0;
+        return (val >= 1 && val <= 65535) ? val : 0;
+    };
+
+    // Bracketed IPv6: "[::1]:19132" or "[::1]".
+    if (!s.empty() && s.front() == '[') {
+        if (size_t close = s.find(']'); close != std::string_view::npos) {
+            out.host = std::string(s.substr(1, close - 1));
+            if (close + 1 < s.size() && s[close + 1] == ':') {
+                out.port = parsePort(s.substr(close + 2));
+            }
+            return out;
+        }
+    }
+
+    // Split single ":port" suffix (never split unbracketed IPv6 with multiple colons).
+    size_t const firstColon = s.find(':');
+    if (firstColon != std::string_view::npos && s.find(':', firstColon + 1) == std::string_view::npos) {
+        int const p = parsePort(s.substr(firstColon + 1));
+        if (p > 0) {
+            out.host = std::string(s.substr(0, firstColon));
+            out.port = p;
+            return out;
+        }
+    }
+
+    out.host = std::string(s);
+    return out;
+}
+
 std::string ServerIdentity::fingerprint() const {
     if (!inWorld) return "none";
+    auto const normHost = normalizeHostEndpoint(host);
+    auto const normIp   = normalizeHostEndpoint(ip);
+    int const  effPort  = (port > 0) ? port : (normHost.port > 0 ? normHost.port : normIp.port);
     std::ostringstream os;
     os << (isLocal ? "local|" : (isRealm ? "realm|" : "ext|"))
-       << trimLower(host) << "|"
-       << trimLower(ip) << "|"
-       << port << "|"
+       << trimLower(normHost.host) << "|"
+       << trimLower(normIp.host) << "|"
+       << effPort << "|"
        << trimLower(serverName) << "|"
        << trimLower(worldName);
     return os.str();
@@ -82,21 +156,32 @@ std::string ServerIdentity::displayLabel() const {
         return !serverName.empty() ? ("Realm: " + serverName)
              : (!worldName.empty() ? ("Realm: " + worldName) : "Realm");
     }
-    std::string addr = !host.empty() ? host : ip;
+    auto const  normHost = normalizeHostEndpoint(host);
+    auto const  normIp   = normalizeHostEndpoint(ip);
+    std::string addr     = !normHost.host.empty() ? normHost.host : normIp.host;
+    int const   effPort  = (port > 0) ? port : (normHost.port > 0 ? normHost.port : normIp.port);
     if (!serverName.empty() && !addr.empty()) {
         return serverName + " (" + addr + ")";
     }
     if (!addr.empty()) {
-        return port > 0 ? (addr + ":" + std::to_string(port)) : addr;
+        if (effPort > 0) {
+            bool const isV6 = addr.find(':') != std::string::npos;
+            return isV6 ? ("[" + addr + "]:" + std::to_string(effPort)) : (addr + ":" + std::to_string(effPort));
+        }
+        return addr;
     }
     if (!serverName.empty()) return serverName;
     return "External Server";
 }
 
 bool isLoopbackHost(std::string_view host) noexcept {
-    std::string lo = trimLower(host);
-    if (lo.empty()) return false;
-    return lo == "localhost" || lo == "::1" || lo == "0.0.0.0" || lo.starts_with("127.");
+    try {
+        std::string lo = trimLower(normalizeHostEndpoint(host).host);
+        if (lo.empty()) return false;
+        return lo == "localhost" || lo == "::1" || lo == "0.0.0.0" || lo.starts_with("127.");
+    } catch (...) {
+        return false;
+    }
 }
 
 bool wildcardMatchI(std::string_view pattern, std::string_view text) noexcept {
@@ -132,14 +217,23 @@ RuleMatchScore evaluateServerRule(ServerRule const& rule, ServerIdentity const& 
     if (rule.scope != ConnectionScope::Any) specificity += 10;
 
     if (!rule.hostPattern.empty()) {
-        bool hostOk = (!server.host.empty() && wildcardMatchI(rule.hostPattern, server.host))
+        auto const normHost = normalizeHostEndpoint(server.host);
+        auto const normIp   = normalizeHostEndpoint(server.ip);
+        bool hostOk = (!normHost.host.empty() && wildcardMatchI(rule.hostPattern, normHost.host))
+                   || (!server.host.empty() && wildcardMatchI(rule.hostPattern, server.host))
+                   || (!normIp.host.empty() && wildcardMatchI(rule.hostPattern, normIp.host))
                    || (!server.ip.empty() && wildcardMatchI(rule.hostPattern, server.ip));
         if (!hostOk) return res;
         specificity += hasWildcard(rule.hostPattern) ? 40 : 60;
     }
 
     if (rule.port > 0) {
-        if (server.port != rule.port) return res;
+        int effPort = server.port;
+        if (effPort <= 0) {
+            auto const normHost = normalizeHostEndpoint(server.host);
+            effPort             = (normHost.port > 0) ? normHost.port : normalizeHostEndpoint(server.ip).port;
+        }
+        if (effPort != rule.port) return res;
         specificity += 25;
     }
 
@@ -203,7 +297,8 @@ std::string suggestHostPattern(ServerIdentity const& server) {
     // Realms use ephemeral IPs; prefer world/server name instead of volatile IP.
     if (server.isRealm && server.host.empty()) return "";
 
-    std::string raw = !server.host.empty() ? server.host : server.ip;
+    std::string raw = !server.host.empty() ? normalizeHostEndpoint(server.host).host
+                                           : normalizeHostEndpoint(server.ip).host;
     raw = trimLower(raw);
     if (raw.empty() || isLoopbackHost(raw)) return "";
     if (isLikelyIpAddress(raw)) return raw;

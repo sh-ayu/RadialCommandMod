@@ -55,6 +55,14 @@ struct PlaceholderContext {
     std::string worldName;
 };
 
+struct NormalizedEndpoint {
+    std::string host;
+    int         port = 0; // 0 if no valid port suffix was embedded
+};
+
+// Strip optional URI scheme (e.g. "https://"), path/query, brackets, and trailing ":port" from a host string.
+NormalizedEndpoint normalizeHostEndpoint(std::string_view raw);
+
 // Case-insensitive glob wildcard matcher supporting '*' (0..N chars) and '?' (1 char).
 bool wildcardMatchI(std::string_view pattern, std::string_view text) noexcept;
 

@@ -185,6 +185,9 @@ int testConfigJsoncRobustnessAndSampleSmoke() {
     CHECK(parseKeyName("Insert").value() == kVkInsert);
     CHECK(parseKeyName("None").value() == 0);
     CHECK(!parseKeyName("F13").has_value());
+    CHECK(parseKeyName("VK_65").value() == 65);
+    CHECK(!parseKeyName("VK_65abc").has_value());
+    CHECK(!parseKeyName("VK_99999999999999").has_value());
 
     // Smoke test: shipped config.sample.json parses cleanly with zero warnings!
     auto samplePath = std::filesystem::path("config.sample.json");
@@ -227,7 +230,36 @@ int testServerMatchingAndPlaceholders() {
     CHECK(isLoopbackHost("127.0.0.1"));
     CHECK(isLoopbackHost("::1"));
     CHECK(isLoopbackHost("localhost"));
+    CHECK(isLoopbackHost("http://localhost:19132"));
+    CHECK(isLoopbackHost("https://127.0.0.1:19132/path"));
+    CHECK(isLoopbackHost("[::1]:19132"));
     CHECK(!isLoopbackHost("geo.hivebedrock.network"));
+
+    // Endpoint normalization: strip URI scheme & embedded :port (prevents double-port labels & broken wildcards).
+    {
+        auto n1 = normalizeHostEndpoint("https://skynetwork-mcbe.net:19132");
+        CHECK(n1.host == "skynetwork-mcbe.net" && n1.port == 19132);
+        auto n2 = normalizeHostEndpoint("http://play.myserver.co.jp:19135/foo");
+        CHECK(n2.host == "play.myserver.co.jp" && n2.port == 19135);
+        auto n3 = normalizeHostEndpoint("[2001:db8::1]:19132");
+        CHECK(n3.host == "2001:db8::1" && n3.port == 19132);
+        auto n4 = normalizeHostEndpoint("2001:db8::1");
+        CHECK(n4.host == "2001:db8::1" && n4.port == 0);
+
+        ServerIdentity urlSrv;
+        urlSrv.inWorld = true;
+        urlSrv.isLocal = false;
+        urlSrv.host    = "https://skynetwork-mcbe.net:19132";
+        urlSrv.port    = 19132;
+        CHECK(urlSrv.displayLabel() == "skynetwork-mcbe.net:19132");
+        CHECK(suggestHostPattern(urlSrv) == "skynetwork-mcbe.net");
+
+        ServerIdentity urlSub = urlSrv;
+        urlSub.host           = "https://play.myserver.co.jp:19135";
+        urlSub.port           = 0;
+        CHECK(urlSub.displayLabel() == "play.myserver.co.jp:19135");
+        CHECK(suggestHostPattern(urlSub) == "*.myserver.co.jp");
+    }
 
     // Lexicographic (priority, specificity) regression tests:
     // 1) Negative priority still matches (never rejected as score < 0!).
@@ -583,6 +615,67 @@ int testEditorModelFullWorkflow() {
         }
         auto sLayout = ed.buildLayout(540.0f, 304.0f);
         CHECK(!sLayout.labels.empty());
+
+        // Regression: fill_wname on an external server preserves External scope (never overwrites to Local).
+        ServerIdentity extWithWorld = srv;
+        extWithWorld.worldName      = "LobbyWorld";
+        editor::EditorModel edExt;
+        edExt.beginSession(cfg, extWithWorld, 0, false);
+        for (auto const& b : edExt.buildLayout(540.0f, 304.0f).buttons) {
+            if (b.id == "tab:servers") {
+                edExt.handleClick(b.rect.x0 + 3.0f, b.rect.y0 + 3.0f, 540.0f, 304.0f);
+                break;
+            }
+        }
+        for (auto const& b : edExt.buildLayout(540.0f, 304.0f).buttons) {
+            if (b.id == "fill_wname") {
+                edExt.handleClick(b.rect.x0 + 3.0f, b.rect.y0 + 3.0f, 540.0f, 304.0f);
+                break;
+            }
+        }
+        CHECK(edExt.currentRule() != nullptr);
+        CHECK(edExt.currentRule()->scope == ConnectionScope::External);
+        CHECK(edExt.currentRule()->worldNamePattern == "*LobbyWorld*");
+
+        // Regression: pattern field accepts up to 128 bytes (matching sanitizeConfig).
+        for (auto const& tb : edExt.buildLayout(540.0f, 304.0f).textBoxes) {
+            if (tb.field == editor::TextFieldId::HostPattern) {
+                edExt.handleClick(tb.rect.x0 + 3.0f, tb.rect.y0 + 3.0f, 540.0f, 304.0f);
+                break;
+            }
+        }
+        std::string longPat(140, 'a');
+        edExt.insertText(longPat);
+        CHECK(edExt.currentRule()->hostPattern.size() == 128);
+
+        // Regression: tog_page cycles strictly within actual page count (maxTogglePage + 1) and sl_next clamps.
+        for (auto const& b : edExt.buildLayout(540.0f, 304.0f).buttons) {
+            if (b.id == "tab:settings") {
+                edExt.handleClick(b.rect.x0 + 3.0f, b.rect.y0 + 3.0f, 540.0f, 304.0f);
+                break;
+            }
+        }
+        auto setLay1 = edExt.buildLayout(540.0f, 304.0f);
+        int  togPages = setLay1.maxTogglePage + 1;
+        CHECK(togPages >= 2);
+        std::string firstTogLabel;
+        for (auto const& b : setLay1.buttons) {
+            if (b.id == "tog_page") firstTogLabel = b.label;
+        }
+        for (int i = 0; i < togPages; ++i) {
+            auto curL = edExt.buildLayout(540.0f, 304.0f);
+            for (auto const& b : curL.buttons) {
+                if (b.id == "tog_page") {
+                    edExt.handleClick(b.rect.x0 + 3.0f, b.rect.y0 + 3.0f, 540.0f, 304.0f);
+                    break;
+                }
+            }
+        }
+        std::string afterCycleTogLabel;
+        for (auto const& b : edExt.buildLayout(540.0f, 304.0f).buttons) {
+            if (b.id == "tog_page") afterCycleTogLabel = b.label;
+        }
+        CHECK(afterCycleTogLabel == firstTogLabel);
     }
 
     // Save & load atomic roundtrip.
