@@ -6,6 +6,7 @@
   "info": {
     "name": "RadialCommandMod",
     "description": "Hold/toggle radial command & quick-chat wheel with flick selection, submenus, timed macros, per-server auto presets, and an in-game visual GUI editor for Minecraft Bedrock.",
+    "avatar_url": "https://raw.githubusercontent.com/sh-ayu/RadialCommandMod/main/assets/icon.png",
     "tags": [
       "platform:levilamina",
       "type:mod"
