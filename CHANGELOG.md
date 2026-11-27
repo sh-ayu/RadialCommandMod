@@ -2,6 +2,19 @@
 
 All notable changes to **RadialCommandMod** are documented in this file.
 
+## [1.0.2] - 2026-11-27
+
+### Fixed
+- **Toggle mode no longer double-fires**: The wheel only reacts to a real key-down edge, so UI polling, key events, and OS key repeat cannot toggle it twice. Activation key state is now guarded by the same lock as the wheel controller.
+- **Hidden HUD (F1)**: The wheel cannot open or draw while the HUD is hidden, and an open wheel is cancelled.
+- **Server rules match more host formats**: Hosts with a scheme (`https://`), path, `user@`, `:port` suffix, or bracketed IPv6 (`[::1]:19132`) are normalized before matching, and an embedded port is used when the connection reports none.
+- **Strict number parsing**: Port fields, key names (`F1`-`F12`, `vk<code>`), editor IDs, and the `flickSensitivity` / `globalCooldownMs` commands reject malformed numbers instead of silently reading `0`; the commands report an invalid value.
+- **Editor**: Settings toggle/slider pages are clamped to the real page count, new rules use the current connection's local/external scope, and host/name pattern fields accept up to 128 characters.
+- **Rendering**: The shader color is restored even on early return.
+
+### Changed
+- Add a mod icon (`assets/icon.png`) and use it as the package logo on LeviMC Mods instead of the author's avatar.
+
 ## [1.0.1] - 2026-11-26
 
 ### Fixed

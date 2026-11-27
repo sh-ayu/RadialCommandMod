@@ -57,7 +57,7 @@ target("RadialCommandMod")
     add_rules("@levibuildscript/modpacker", {
         modName = "RadialCommandMod",
         modFile = "RadialCommandMod.dll",
-        modVersion = "1.0.1",
+        modVersion = "1.0.2",
         modPlatform = "client"
     })
     add_files("src/core/*.cpp", "src/mod/*.cpp")

@@ -1,7 +1,7 @@
 {
   "name": "RadialCommandMod",
   "entry": "RadialCommandMod.dll",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "type": "native",
   "platform": "client",
   "description": "Hold/toggle radial command and quick-chat wheel with flick selection, submenus, timed macros, per-server auto presets, and an in-game visual GUI editor for Minecraft Bedrock."
